@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sales Commission Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #f8fafc; padding: 20px; min-height: 100vh; }
+    .card { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+    .header h1 { font-size: 22px; font-weight: 700; color: #1e293b; }
+    .header p { color: #64748b; font-size: 13px; margin-top: 4px; }
+    .upload-btn { background: #2563eb; color: #fff; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; border: none; }
+    .upload-btn:hover { background: #1d4ed8; }
+    #uploadStatus { font-size: 12px; margin-left: 12px; }
+    .status-success { color: #059669; }
+    .status-error { color: #dc2626; }
+    
+    .slicer-label { font-size: 12px; font-weight: 600; color: #64748b; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .month-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+    .month-btn { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; background: #e2e8f0; color: #475569; transition: all 0.2s; }
+    .month-btn:hover { background: #cbd5e1; }
+    .month-btn.active { background: #2563eb; color: #fff; }
+    
+    .filters { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; }
+    .filter-group label { display: block; font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 6px; }
+    .filter-group select { padding: 8px 12px; border-radius: 6px; border: 1px solid #e2e8f0; font-size: 13px; min-width: 180px; background: #fff; }
+    .reset-btn { padding: 8px 16px; border-radius: 6px; border: none; background: #fee2e2; color: #dc2626; cursor: pointer; font-size: 13px; font-weight: 500; }
+    .reset-btn:hover { background: #fecaca; }
+    
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .kpi-card { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .kpi-label { font-size: 11px; color: #64748b; font-weight: 500; text-transform: uppercase; }
+    .kpi-value { font-size: 22px; font-weight: 700; margin-top: 6px; }
+    
+    .charts-row { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 16px; }
+    .charts-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    .chart-title { margin: 0 0 16px; font-size: 14px; font-weight: 600; color: #1e293b; }
+    .chart-container { position: relative; height: 250px; }
+    
+    .table-container { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { text-align: left; padding: 10px 8px; color: #64748b; font-weight: 600; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
+    th.right { text-align: right; }
+    td { padding: 10px 8px; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
+    td.right { text-align: right; }
+    td.blue { color: #2563eb; font-weight: 600; }
+    .badge { background: #dbeafe; color: #2563eb; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+    
+    .footer { text-align: center; margin-top: 16px; color: #94a3b8; font-size: 11px; }
+    
+    @media (max-width: 768px) {
+      .charts-row, .charts-row-2 { grid-template-columns: 1fr; }
+      .filter-group select { min-width: 140px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="card">
+    <div class="header">
+      <div>
+        <h1>Sales Commission Dashboard</h1>
+        <p id="recordCount">2025 YTD • Loading...</p>
+      </div>
+      <div style="display: flex; align-items: center;">
+        <label class="upload-btn">
+          📁 Upload CSV
+          <input type="file" id="csvUpload" accept=".csv" style="display: none;">
+        </label>
+        <span id="uploadStatus"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Month Slicer -->
+  <div class="card">
+    <div class="slicer-label">Select Month</div>
+    <div class="month-buttons" id="monthButtons"></div>
+  </div>
+
+  <!-- Hierarchy Filters -->
+  <div class="card">
+    <div class="filters">
+      <div class="filter-group">
+        <label>SALES DIRECTOR</label>
+        <select id="directorFilter"></select>
+      </div>
+      <div class="filter-group">
+        <label>SALES MANAGER</label>
+        <select id="managerFilter"></select>
+      </div>
+      <div class="filter-group">
+        <label>AGENT</label>
+        <select id="agentFilter"></select>
+      </div>
+      <button class="reset-btn" id="resetBtn">Reset All</button>
+    </div>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="kpi-grid" id="kpiGrid"></div>
+
+  <!-- Charts Row 1 -->
+  <div class="charts-row">
+    <div class="card">
+      <h3 class="chart-title">Monthly Commission Trend</h3>
+      <div class="chart-container"><canvas id="trendChart"></canvas></div>
+    </div>
+    <div class="card">
+      <h3 class="chart-title">By Sales Director</h3>
+      <div class="chart-container"><canvas id="directorChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Charts Row 2 -->
+  <div class="charts-row-2">
+    <div class="card">
+      <h3 class="chart-title">Commission by Sales Manager</h3>
+      <div class="chart-container"><canvas id="managerChart"></canvas></div>
+    </div>
+    <div class="card">
+      <h3 class="chart-title">Top 10 Agents</h3>
+      <div class="chart-container"><canvas id="agentChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Agent Table -->
+  <div class="card">
+    <h3 class="chart-title">Top Agents Summary</h3>
+    <div class="table-container">
+      <table id="agentTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Agent</th>
+            <th class="right">Commission</th>
+            <th class="right">Deals</th>
+            <th class="right">Avg/Deal</th>
+            <th class="right">Share %</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">Dashboard auto-updates on CSV upload • Filters cascade: Director → Manager → Agent</div>
+
+<script>
+// Default Data
+const defaultData = [
+{"deal":"S-001/A","month":"Feb-25","agent":"SCOTT CAELAN SKELLY","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":15460},
+{"deal":"O - 001/25","month":"Jan-25","agent":"AKHLESH MISHRA","manager":"SUBROTO BANERJEE","director":"SUBROTO BANERJEE","commission":14000},
+{"deal":"O - 002/25","month":"Jan-25","agent":"SONILA SHERIFI","manager":"SUBROTO BANERJEE","director":"SUBROTO BANERJEE","commission":4000},
+{"deal":"O - 005/25","month":"Jan-25","agent":"MUKESH RAWAT","manager":"SUBROTO BANERJEE","director":"SUBROTO BANERJEE","commission":74500},
+{"deal":"O - 005/25A","month":"Jan-25","agent":"MUKESH RAWAT","manager":"SUBROTO BANERJEE","director":"SUBROTO BANERJEE","commission":24999.97},
+{"deal":"O - 007/25","month":"Jan-25","agent":"ANKESH MISHRA","manager":"NOT APPLICABLE","director":"SUBROTO BANERJEE","commission":407880},
+{"deal":"O - 017/25","month":"Feb-25","agent":"NOURHAN AMER MELIGYMOHAMED","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":62915.52},
+{"deal":"O - 015/25","month":"Feb-25","agent":"ANKESH MISHRA","manager":"SUBROTO BANERJEE","director":"SUBROTO BANERJEE","commission":7500},
+{"deal":"O - 016/25","month":"Feb-25","agent":"MUKESH RAWAT","manager":"SUBROTO BANERJEE","director":"SUBROTO BANERJEE","commission":10500},
+{"deal":"O - 019/25","month":"Feb-25","agent":"MUKESH RAWAT","manager":"NOT APPLICABLE","director":"MOHAMED ELSAYED","commission":10250},
+{"deal":"O - 021/25","month":"Feb-25","agent":"MERIEM ISSALMANE","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":29400},
+{"deal":"O - 022/25","month":"Feb-25","agent":"NAJI KADDOURA","manager":"SYED DANISH HAIDER","director":"MOHAMED ELSAYED","commission":30000},
+{"deal":"O - 023/25","month":"Feb-25","agent":"MERIEM ISSALMANE","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":242195.52},
+{"deal":"O - 024/25","month":"Feb-25","agent":"SHAAM ALZOABI","manager":"SYED DANISH HAIDER","director":"MOHAMED ELSAYED","commission":83555.52},
+{"deal":"O - 025/25","month":"Feb-25","agent":"MUKESH RAWAT","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":123392.5},
+{"deal":"O - 026/25","month":"Feb-25","agent":"MOHAMMAD BILAL MAZAR","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":53329},
+{"deal":"O - 027/25","month":"Feb-25","agent":"LUSINE MIKAELIAN","manager":"SYED DANISH HAIDER","director":"MOHAMED ELSAYED","commission":27599.78},
+{"deal":"O - 028/25","month":"Feb-25","agent":"NIHAD MADIDI","manager":"SYED DANISH HAIDER","director":"MOHAMED ELSAYED","commission":161880},
+{"deal":"O - 029/25","month":"Feb-25","agent":"ANKESH MISHRA","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":375000},
+{"deal":"O - 030/25","month":"Feb-25","agent":"DARREN CHRIS MONTEIRO","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":22128.88},
+{"deal":"O - 030A/25","month":"Feb-25","agent":"DARREN CHRIS MONTEIRO","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":22128.88},
+{"deal":"O - 031/25","month":"Feb-25","agent":"NEETA KISHINCHAND TARANI","manager":"SYED DANISH HAIDER","director":"MOHAMED ELSAYED","commission":95150},
+{"deal":"O - 032/25","month":"Feb-25","agent":"SELBI GURBANVA","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":42500},
+{"deal":"S-002/25","month":"Jan-25","agent":"SCOTT CAELAN SKELLY","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":24420},
+{"deal":"S - 002/25","month":"Jan-25","agent":"AISHA LUYIMA","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":20831.8},
+{"deal":"S - 009/25","month":"Jan-25","agent":"AYAZ ALI","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":31500},
+{"deal":"S-004/A","month":"Mar-25","agent":"AYAZ ALI","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":5150},
+{"deal":"S-004","month":"Feb-25","agent":"AYAZ ALI","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":15202.8},
+{"deal":"S - 003/25","month":"Feb-25","agent":"MOHAMMED TAHA","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":11500},
+{"deal":"S-001","month":"Feb-25","agent":"SCOTT CAELAN SKELLY","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":5000},
+{"deal":"S - 006/25","month":"Feb-25","agent":"JAYA NARESH BHARWANI","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":82000},
+{"deal":"S - 008/25","month":"Feb-25","agent":"JOSEPH MICHAEL CARTER","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":36460},
+{"deal":"S - 007/25","month":"Feb-25","agent":"SCOTT CAELAN SKELLY","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":13920.03},
+{"deal":"S - 007A/25","month":"Feb-25","agent":"SCOTT CAELAN SKELLY","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":6666.51},
+{"deal":"S - 010/25","month":"Jan-25","agent":"Ayaz Ali","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":5000},
+{"deal":"O - 033/25","month":"Mar-25","agent":"MOHAMMAD BILAL MAZAR","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":32500},
+{"deal":"O - 038/25","month":"Mar-25","agent":"ANKESH MISHRA","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":17714},
+{"deal":"O - 034/25","month":"Mar-25","agent":"IDRISS FADDOULI","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":42160},
+{"deal":"O - 040/25","month":"Mar-25","agent":"IDRISS FADDOULI","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":181900},
+{"deal":"O - 041/25A","month":"Mar-25","agent":"SAURABH CHUGH","manager":"SUBROTO BANERJEE","director":"SUBROTO BANERJEE","commission":43459.29},
+{"deal":"O - 041/25AA","month":"Mar-25","agent":"SAURABH CHUGH","manager":"SUBROTO BANERJEE","director":"SUBROTO BANERJEE","commission":43459.29},
+{"deal":"O - 041/25B","month":"Mar-25","agent":"SAURABH CHUGH","manager":"SUBROTO BANERJEE","director":"SUBROTO BANERJEE","commission":8435.07},
+{"deal":"O - 041/25BB","month":"Mar-25","agent":"SAURABH CHUGH","manager":"SUBROTO BANERJEE","director":"SUBROTO BANERJEE","commission":42175.35},
+{"deal":"O - 042/25","month":"Mar-25","agent":"MOHAMMAD BILAL MAZAR","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":374257.76},
+{"deal":"O - 042A/25","month":"Mar-25","agent":"MOHAMMAD BILAL MAZAR","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":374257.76},
+{"deal":"O - 043/25","month":"Mar-25","agent":"DARREN CHRIS MONTEIRO","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":49955.52},
+{"deal":"O - 044/25","month":"Mar-25","agent":"MUKESH RAWAT","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":43000},
+{"deal":"O - 045/25","month":"Mar-25","agent":"MUKESH RAWAT","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":30500},
+{"deal":"O - 046/25","month":"Mar-25","agent":"ANKESH MISHRA","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":37800},
+{"deal":"O - 047/25","month":"Mar-25","agent":"ANKESH MISHRA","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":73775},
+{"deal":"O - 048/25","month":"Mar-25","agent":"SONILA SHERIFI","manager":"NOT APPLICABLE","director":"MOHAMED ELSAYED","commission":17400},
+{"deal":"O - 049/25","month":"Mar-25","agent":"SAURABH CHUGH","manager":"SUBROTO BANERJEE","director":"SUBROTO BANERJEE","commission":26960.05},
+{"deal":"O - 049/25 A","month":"Mar-25","agent":"SAURABH CHUGH","manager":"SUBROTO BANERJEE","director":"SUBROTO BANERJEE","commission":26960.05},
+{"deal":"O - 050/25","month":"Mar-25","agent":"ANKESH MISHRA","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":21500},
+{"deal":"O - 051/25","month":"Mar-25","agent":"ZARINA AITMAGAMBETOVA","manager":"SYED DANISH HAIDER","director":"MOHAMED ELSAYED","commission":61394.4},
+{"deal":"S - 012/25","month":"Mar-25","agent":"SCOTT CAELAN SKELLY","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":47500},
+{"deal":"S - 013/25","month":"Mar-25","agent":"SCOTT CAELAN SKELLY","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":39880},
+{"deal":"S - 013/25A","month":"Mar-25","agent":"SCOTT CAELAN SKELLY","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":8809.51},
+{"deal":"S - 014/25","month":"Mar-25","agent":"JOSEPH MICHAEL CARTER","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":21540},
+{"deal":"S - 015/25","month":"Mar-25","agent":"NASRELDIN ATEF AHMED ALY AHMED","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":9000},
+{"deal":"S - 015/25A","month":"Mar-25","agent":"NASRELDIN ATEF AHMED ALY AHMED","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":9000},
+{"deal":"S - 016/25","month":"Mar-25","agent":"DANTE PENNIECOOKE","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":5000.4},
+{"deal":"O - 056/25","month":"Apr-25","agent":"LAURA KAUPA","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":173000},
+{"deal":"O - 057/25","month":"Apr-25","agent":"KRISTINA DRONINA","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":64200},
+{"deal":"O - 058/25","month":"Apr-25","agent":"KAVYAMBIKA SURESH MANGALORE","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":4280},
+{"deal":"O - 059/25","month":"Apr-25","agent":"ANKESH MISHRA","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":20425.42},
+{"deal":"O - 059 A/25","month":"Apr-25","agent":"ANKESH MISHRA","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":20425.42},
+{"deal":"O - 060/25","month":"Apr-25","agent":"ANKESH MISHRA","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":20425.42},
+{"deal":"O - 060A/25","month":"Apr-25","agent":"ANKESH MISHRA","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":20425.42},
+{"deal":"O - 061/25","month":"Apr-25","agent":"LAURA KAUPA","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":237250},
+{"deal":"O - 062/25","month":"Apr-25","agent":"ZARINA AITMAGAMBETOVA","manager":"SYED DANISH HAIDER","director":"MOHAMED ELSAYED","commission":14900},
+{"deal":"O - 063/25","month":"Apr-25","agent":"SAURABH CHUGH","manager":"SUBROTO BANERJEE","director":"SUBROTO BANERJEE","commission":48280},
+{"deal":"O - 064/25","month":"Apr-25","agent":"ANKESH MISHRA","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":33450},
+{"deal":"O - 065/25","month":"Apr-25","agent":"AKHLESH MISHRA","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":6500},
+{"deal":"O - 066/25","month":"Apr-25","agent":"SAURABH CHUGH","manager":"SUBROTO BANERJEE","director":"SUBROTO BANERJEE","commission":84341.34},
+{"deal":"O - 068/25","month":"Apr-25","agent":"SAURABH CHUGH","manager":"SUBROTO BANERJEE","director":"SUBROTO BANERJEE","commission":17420},
+{"deal":"O - 069/25","month":"Apr-25","agent":"MOHAMMED AZEEM","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":42925.14},
+{"deal":"O - 071/25","month":"Apr-25","agent":"HIND DARDAOUI","manager":"SYED DANISH HAIDER","director":"MOHAMED ELSAYED","commission":41880},
+{"deal":"O - 071/25A","month":"Apr-25","agent":"HIND DARDAOUI","manager":"SYED DANISH HAIDER","director":"MOHAMED ELSAYED","commission":27920},
+{"deal":"O - 072/25","month":"Apr-25","agent":"HIND DARDAOUI","manager":"SYED DANISH HAIDER","director":"MOHAMED ELSAYED","commission":102600},
+{"deal":"O - 073/25","month":"Apr-25","agent":"MOHSIN ALI","manager":"SYED DANISH HAIDER","director":"MOHAMED ELSAYED","commission":40200},
+{"deal":"O - 073/25A","month":"Apr-25","agent":"MOHSIN ALI","manager":"SYED DANISH HAIDER","director":"MOHAMED ELSAYED","commission":26800},
+{"deal":"O - 074/25","month":"Apr-25","agent":"MUHAMMAD MANSOOR AHMED","manager":"SYED DANISH HAIDER","director":"MOHAMED ELSAYED","commission":63672},
+{"deal":"O - 074/25A","month":"Apr-25","agent":"MUHAMMAD MANSOOR AHMED","manager":"SYED DANISH HAIDER","director":"MOHAMED ELSAYED","commission":42448},
+{"deal":"O - 075/25","month":"Apr-25","agent":"MUHAMMAD MANSOOR AHMED","manager":"SYED DANISH HAIDER","director":"MOHAMED ELSAYED","commission":40008},
+{"deal":"O - 075/25A","month":"Apr-25","agent":"MUHAMMAD MANSOOR AHMED","manager":"SYED DANISH HAIDER","director":"MOHAMED ELSAYED","commission":26672},
+{"deal":"O - 076/25","month":"Apr-25","agent":"HIND DARDAOUI","manager":"SYED DANISH HAIDER","director":"MOHAMED ELSAYED","commission":39912},
+{"deal":"O - 076/25A","month":"Apr-25","agent":"HIND DARDAOUI","manager":"SYED DANISH HAIDER","director":"MOHAMED ELSAYED","commission":26608},
+{"deal":"O - 077/25","month":"Apr-25","agent":"HIND DARDAOUI","manager":"SYED DANISH HAIDER","director":"MOHAMED ELSAYED","commission":51420},
+{"deal":"O - 079/25","month":"Apr-25","agent":"SAURABH CHUGH","manager":"SUBROTO BANERJEE","director":"SUBROTO BANERJEE","commission":9856},
+{"deal":"O - 080/25","month":"Apr-25","agent":"MEHMET EMIR GULLUOGLU","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":85191.4},
+{"deal":"O - 083/25","month":"Apr-25","agent":"MOHAMMAD FURQAN","manager":"SUBROTO BANERJEE","director":"SUBROTO BANERJEE","commission":84110.5},
+{"deal":"O - 084/25","month":"Apr-25","agent":"MERIEM ISSALMANE","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":114277.76},
+{"deal":"O - 084/25A","month":"Apr-25","agent":"MERIEM ISSALMANE","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":114277.76},
+{"deal":"S - 011/25","month":"Apr-25","agent":"NASRELDIN ATEF AHMED ALY AHMED","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":5000},
+{"deal":"S - 017/25","month":"Apr-25","agent":"NASRELDIN ATEF AHMED ALY AHMED","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":26800},
+{"deal":"S - 018/25","month":"Apr-25","agent":"NASRELDIN ATEF AHMED ALY AHMED","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":34500},
+{"deal":"S - 018/25A","month":"Apr-25","agent":"AISHA LUYIMA","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":34500},
+{"deal":"S - 019/25","month":"Apr-25","agent":"JAYA NARESH BHARWANI","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":66000},
+{"deal":"S - 020/25","month":"Apr-25","agent":"JOSEPH MICHAEL CARTER","manager":"NOT APPLICABLE","director":"SHAUN CULLEN","commission":15900},
+{"deal":"S - 021/25","month":"Apr-25","agent":"JOSEPH MICHAEL CARTER","manager":"NOT APPLICABLE","director":"SHAUN CULLEN","commission":13220},
+{"deal":"S - 022/25","month":"Apr-25","agent":"JOSEPH MICHAEL CARTER","manager":"NOT APPLICABLE","director":"SHAUN CULLEN","commission":13200},
+{"deal":"S - 023/25","month":"Apr-25","agent":"SCOTT CAELAN SKELLY","manager":"NOT APPLICABLE","director":"SHAUN CULLEN","commission":18980},
+{"deal":"S - 024/25","month":"Apr-25","agent":"SCOTT CAELAN SKELLY","manager":"NOT APPLICABLE","director":"SHAUN CULLEN","commission":14200},
+{"deal":"S - 025/25","month":"Apr-25","agent":"SCOTT CAELAN SKELLY","manager":"NOT APPLICABLE","director":"SHAUN CULLEN","commission":19300},
+{"deal":"S - 026/25","month":"Apr-25","agent":"JOSEPH MICHAEL CARTER","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":81000},
+{"deal":"S - 026A/25","month":"Apr-25","agent":"JOSEPH MICHAEL CARTER","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":37500},
+{"deal":"S - 028/25","month":"Apr-25","agent":"MELTEM CIVELEK","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":15000},
+{"deal":"S - 027/25","month":"Apr-25","agent":"NASRELDIN ATEF AHMED ALY AHMED","manager":"JORDAN LEE LIVERMORE","director":"SHAUN CULLEN","commission":5000},
+{"deal":"O - 103/25","month":"May-25","agent":"SHAAM ALZOABI","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":92700},
+{"deal":"S - 093/25","month":"May-25","agent":"SEBASTIAN HOPPE","manager":"JORDAN LEE LIVERMORE","director":"MOHAMED ELSAYED","commission":6500},
+{"deal":"O - 105/25","month":"May-25","agent":"SAURABH CHUGH","manager":"SUBROTO BANERJEE","director":"SUBROTO BANERJEE","commission":25378.07},
+{"deal":"O - 105/25A","month":"May-25","agent":"SAURABH CHUGH","manager":"SUBROTO BANERJEE","director":"SUBROTO BANERJEE","commission":25378.07},
+{"deal":"O - 096/25","month":"May-25","agent":"ROZHAN GERAMI","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":2625},
+{"deal":"O - 086/25","month":"May-25","agent":"OBAID NAZIR PEER","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":397555.52},
+{"deal":"O - 087/25","month":"May-25","agent":"OBAID NAZIR PEER","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":397395.52},
+{"deal":"O - 089/25","month":"May-25","agent":"OBAID NAZIR PEER","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":98317.76},
+{"deal":"O - 089/25A","month":"May-25","agent":"OBAID NAZIR PEER","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":98317.76},
+{"deal":"S - 095/25","month":"May-25","agent":"NASRELDIN ATEF AHMED ALY AHMED","manager":"JORDAN LEE LIVERMORE","director":"MOHAMED ELSAYED","commission":5000},
+{"deal":"S - 098/25","month":"May-25","agent":"NASRELDIN ATEF AHMED ALY AHMED","manager":"JORDAN LEE LIVERMORE","director":"MOHAMED ELSAYED","commission":7179.05},
+{"deal":"O - 090/25","month":"May-25","agent":"MUKESH RAWAT","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":68568},
+{"deal":"O - 090/25A","month":"May-25","agent":"MUKESH RAWAT","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":45712},
+{"deal":"O - 106/25","month":"May-25","agent":"MUKESH RAWAT","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":1000},
+{"deal":"O - 107/25","month":"May-25","agent":"MUKESH RAWAT","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":1000},
+{"deal":"O - 085/25","month":"May-25","agent":"MOHIT CHHABRA","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":116617.76},
+{"deal":"O - 085/25A","month":"May-25","agent":"MOHIT CHHABRA","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":116617.76},
+{"deal":"O - 091/25","month":"May-25","agent":"MOHIT CHHABRA","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":74709.5},
+{"deal":"O - 100/25","month":"May-25","agent":"MOHAMMAD BILAL MAZAR","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":28319.44},
+{"deal":"O - 100/25A","month":"May-25","agent":"MOHAMMAD BILAL MAZAR","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":37539.76},
+{"deal":"O - 101/25","month":"May-25","agent":"MOHAMMAD BILAL MAZAR","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":12825},
+{"deal":"O - 108/25","month":"May-25","agent":"MELTEM CIVELEK","manager":"ROZITA ABBAS POUR ZANJANI","director":"MOHAMED ELSAYED","commission":8250},
+{"deal":"O - 099/25","month":"May-25","agent":"LAURA KAUPA","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":15000},
+{"deal":"O - 102/25","month":"May-25","agent":"KRISTINA DRONINA","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":67200},
+{"deal":"O - 104/25","month":"May-25","agent":"IDRISS FADDOULI","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":60080},
+{"deal":"O - 097/25","month":"May-25","agent":"ETHAR HASSAN IBRAHIM HASSAN","manager":"SYED DANISH HAIDER","director":"MOHAMED ELSAYED","commission":25000},
+{"deal":"O - 110/25","month":"May-25","agent":"ASMA CHENITI","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":60000},
+{"deal":"S - 094/25","month":"May-25","agent":"AISHA LUYIMA","manager":"JORDAN LEE LIVERMORE","director":"MOHAMED ELSAYED","commission":7961.9},
+{"deal":"S - 094/25","month":"May-25","agent":"AISHA LUYIMA","manager":"JORDAN LEE LIVERMORE","director":"MOHAMED ELSAYED","commission":14285.94},
+{"deal":"O - 111/25","month":"May-25","agent":"STEPHANIE SHUANG","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":44020.7},
+{"deal":"O - 111/25A","month":"May-25","agent":"STEPHANIE SHUANG","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":44020.7},
+{"deal":"O - 113/25","month":"May-25","agent":"OBAID NAZIR PEER","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":369638},
+{"deal":"O - 113/25A","month":"May-25","agent":"OBAID NAZIR PEER","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":369638},
+{"deal":"O - 117/25","month":"Jun-25","agent":"KRISTINA DRONINA","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":19261.42},
+{"deal":"O - 117/25A","month":"Jun-25","agent":"KRISTINA DRONINA","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":19261.42},
+{"deal":"S - 118/25","month":"Jun-25","agent":"AYAZ ALI","manager":"JORDAN LEE LIVERMORE","director":"MOHAMED ELSAYED","commission":3900},
+{"deal":"O - 119/25","month":"Jun-25","agent":"KRISTINA DRONINA","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":28737.92},
+{"deal":"O - 119/25A","month":"Jun-25","agent":"KRISTINA DRONINA","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":28737.92},
+{"deal":"O - 121/25","month":"Jun-25","agent":"HIBILDAS HARIDAS","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":8500},
+{"deal":"O -122/25","month":"Jun-25","agent":"HIBILDAS HARIDAS","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":4000},
+{"deal":"O -123/25","month":"Jun-25","agent":"RAJDEEP SINGH","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":101094.88},
+{"deal":"O - 124/25","month":"Jun-25","agent":"WALID EL FRINI","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":18500},
+{"deal":"S - 125/25","month":"Jun-25","agent":"JAYA NARESH BHARWANI","manager":"JORDAN LEE LIVERMORE","director":"MOHAMED ELSAYED","commission":123809.52},
+{"deal":"O - 126/25","month":"Jun-25","agent":"MUKESH RAWAT","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":332689.71},
+{"deal":"O - 126/25A","month":"Jun-25","agent":"MUKESH RAWAT","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":332689.71},
+{"deal":"O - 127/25","month":"Jun-25","agent":"MUKESH RAWAT","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":332689.71},
+{"deal":"O - 127/25A","month":"Jun-25","agent":"MUKESH RAWAT","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":332689.71},
+{"deal":"O - 128/25","month":"Jun-25","agent":"IDRISS FADDOULI","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":83596.52},
+{"deal":"O - 130/25","month":"Jul-25","agent":"MUKESH RAWAT","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":123287.91},
+{"deal":"O - 130/25A","month":"Jul-25","agent":"MUKESH RAWAT","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":123287.91},
+{"deal":"O - 131/25","month":"Jul-25","agent":"MUKESH RAWAT","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":129400},
+{"deal":"O - 132/25","month":"Jul-25","agent":"SAURABH CHUGH","manager":"SUBROTO BANERJEE","director":"SUBROTO BANERJEE","commission":85759.62},
+{"deal":"O - 133/25","month":"Jul-25","agent":"SAURABH CHUGH","manager":"SUBROTO BANERJEE","director":"SUBROTO BANERJEE","commission":86918.58},
+{"deal":"O - 134/25","month":"Jul-25","agent":"WALID EL FRINI","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":21000},
+{"deal":"O - 135/25","month":"Jul-25","agent":"COLIN GODWIN SANTHWAN","manager":"ROZITA ABBAS POUR ZANJANI","director":"MOHAMED ELSAYED","commission":11896.83},
+{"deal":"O - 135/25A","month":"Jul-25","agent":"COLIN GODWIN SANTHWAN","manager":"ROZITA ABBAS POUR ZANJANI","director":"MOHAMED ELSAYED","commission":35690.49},
+{"deal":"O - 136/25","month":"Jul-25","agent":"ANKESH MISHRA","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":24500},
+{"deal":"O - 137/25","month":"Jul-25","agent":"MUKESH RAWAT","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":59500},
+{"deal":"O - 139/25","month":"Jul-25","agent":"MUHAMMAD MANSOOR AHMED","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":69154.86},
+{"deal":"O - 140/25","month":"Jul-25","agent":"HIND DARDAOUI","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":13300},
+{"deal":"O - 141/25","month":"Jul-25","agent":"LAURA KAUPA","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":7750},
+{"deal":"O - 142/25","month":"Jul-25","agent":"MOHAMMED AZEEM","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":100000},
+{"deal":"O - 143/25","month":"Jul-25","agent":"IDRISS FADDOULI","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":58300},
+{"deal":"O - 144/25","month":"Jul-25","agent":"HIND DARDAOUI","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":12100},
+{"deal":"O - 145/25","month":"Jul-25","agent":"MERIEM ISSALMANE","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":191715.52},
+{"deal":"O - 146/25","month":"Jul-25","agent":"WALID EL FRINI","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":17500},
+{"deal":"O - 147/25","month":"Jul-25","agent":"KAVYAMBIKA SURESH MANGALORE","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":3000.11},
+{"deal":"O - 148/25","month":"Jul-25","agent":"MALIK RASHID ALI","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":2857.2},
+{"deal":"O - 149/25","month":"Jul-25","agent":"OBAID NAZIR PEER","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":164540},
+{"deal":"O - 150/25","month":"Jul-25","agent":"NEETA KISHINCHAND TARANI","manager":"ROZITA ABBAS POUR ZANJANI","director":"MOHAMED ELSAYED","commission":34879.95},
+{"deal":"O - 151/25","month":"Aug-25","agent":"MALIK RASHID ALI","manager":"SUBROTO BANERJEE","director":"MOHAMED ELSAYED","commission":5714.29},
+{"deal":"O - 152/25","month":"Aug-25","agent":"NEETA KISHINCHAND TARANI","manager":"ROZITA ABBAS POUR ZANJANI","director":"MOHAMED ELSAYED","commission":35119.96},
+{"deal":"S - 153/25","month":"Aug-25","agent":"JAYDAB BHOWMIK","manager":"NADIM","director":"MOHAMED ELSAYED","commission":5000},
+{"deal":"S - 154/25","month":"Aug-25","agent":"RUBY ROSE RAPIS","manager":"NADIM","director":"MOHAMED ELSAYED","commission":6150},
+{"deal":"S - 155/25","month":"Aug-25","agent":"SANDEEP MAZZARI","manager":"NADIM","director":"MOHAMED ELSAYED","commission":7250},
+{"deal":"O -156/25","month":"Aug-25","agent":"CHIDINMA MARYJANE OKEKE","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":23000},
+{"deal":"O -158/25","month":"Aug-25","agent":"COLIN GODWIN SANTHWAN","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":50926.55},
+{"deal":"O -159/25","month":"Aug-25","agent":"TAREK AHMED MOHARAM HASSAN SALEH","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":5500},
+{"deal":"O -160/25","month":"Aug-25","agent":"HIND DARDAOUI","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":13800},
+{"deal":"S -161/25","month":"Aug-25","agent":"TAMARA CREEK","manager":"NADIM","director":"MOHAMED ELSAYED","commission":1000.04},
+{"deal":"O -162/25","month":"Aug-25","agent":"HIND DARDAOUI","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":11200},
+{"deal":"S -163/25","month":"Aug-25","agent":"JAYA NARESH BHARWANI","manager":"NADIM","director":"MOHAMED ELSAYED","commission":15000},
+{"deal":"S -170/25","month":"Aug-25","agent":"AISHA LUYIMA","manager":"NADIM","director":"MOHAMED ELSAYED","commission":6100},
+{"deal":"O -171/25","month":"Sep-25","agent":"AKHLESH MISHRA","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":4750},
+{"deal":"O - 180/25","month":"Sep-25","agent":"ARASH HADDAD MOMENI","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":68875},
+{"deal":"O - 180/25A","month":"Sep-25","agent":"ARASH HADDAD MOMENI","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":68875},
+{"deal":"O - 173/25","month":"Sep-25","agent":"HIND DARDAOUI","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":13600},
+{"deal":"O - 178/25","month":"Sep-25","agent":"NATALIA DASHYAN","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":48009.24},
+{"deal":"O - 178/25A","month":"Sep-25","agent":"NATALIA DASHYAN","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":48009.24},
+{"deal":"O - 181/25","month":"Sep-25","agent":"NOURHAN AMER MELIGYMOHAMED","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":115800},
+{"deal":"O - 177/25","month":"Sep-25","agent":"RAJDEEP SINGH","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":13397.81},
+{"deal":"O - 177/25A","month":"Sep-25","agent":"RAJDEEP SINGH","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":13397.83},
+{"deal":"O - 177/25B","month":"Sep-25","agent":"RAJDEEP SINGH","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":26795.6},
+{"deal":"S -172/25","month":"Sep-25","agent":"TAMARA CREEK","manager":"NADIM","director":"MOHAMED ELSAYED","commission":1950},
+{"deal":"O - 175/25","month":"Sep-25","agent":"WALID EL FRINI","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":16500},
+{"deal":"O - 176/25","month":"Sep-25","agent":"WALID EL FRINI","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":12500},
+{"deal":"O - 182/25","month":"Sep-25","agent":"ANKESH MISHRA","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":12571},
+{"deal":"O - 182/25A","month":"Sep-25","agent":"AKHLESH MISHRA","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":12571},
+{"deal":"O - 183/25","month":"Sep-25","agent":"ANKESH MISHRA","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":26350},
+{"deal":"O - 184/25","month":"Sep-25","agent":"MIRA CHAAR","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":72555.52},
+{"deal":"O - 185/25","month":"Sep-25","agent":"SYED DANISH HAIDER","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":43842},
+{"deal":"O - 186/25","month":"Sep-25","agent":"HIND DARDAOUI","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":22000},
+{"deal":"O - 187/25","month":"Sep-25","agent":"SYED DANISH HAIDER","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":43820},
+{"deal":"O - 188/25","month":"Sep-25","agent":"SYED DANISH HAIDER","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":62740},
+{"deal":"O - 189/25","month":"Sep-25","agent":"MALIK RASHID ALI","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":15600},
+{"deal":"O - 190/25","month":"Sep-25","agent":"KRISTINA DRONINA","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":67599.95},
+{"deal":"S - 191/25","month":"Sep-25","agent":"RUBY ROSE RAPIS","manager":"NADIM","director":"MOHAMED ELSAYED","commission":5250},
+{"deal":"O - 192/25","month":"Sep-25","agent":"MUKESH RAWAT","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":75000},
+{"deal":"O - 193/25","month":"Sep-25","agent":"SYED DANISH HAIDER","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":32263.8},
+{"deal":"O - 194/25","month":"Sep-25","agent":"MAYANK","manager":"NOT APPLICABLE","director":"MOHAMED ELSAYED","commission":21800},
+{"deal":"O - 195/25","month":"Sep-25","agent":"AVISHEK","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":42000},
+{"deal":"O - 203/25","month":"Sep-25","agent":"MUKESH RAWAT","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":5600},
+{"deal":"O - 204/25","month":"Oct-25","agent":"KRISTINA DRONINA","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":20600},
+{"deal":"S - 205/25","month":"Oct-25","agent":"JAYA NARESH BHARWANI","manager":"NADIM","director":"MOHAMED ELSAYED","commission":82200},
+{"deal":"S - 206/25","month":"Oct-25","agent":"JAYA NARESH BHARWANI","manager":"NADIM","director":"MOHAMED ELSAYED","commission":82200},
+{"deal":"S - 207/25","month":"Oct-25","agent":"RUBY ROSE RAPIS","manager":"NADIM","director":"MOHAMED ELSAYED","commission":61020},
+{"deal":"O - 208/25","month":"Oct-25","agent":"MERIEM ISSALMANE","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":656240},
+{"deal":"O - 209/25","month":"Oct-25","agent":"MOHAMMAD BILAL MAZAR","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":32500},
+{"deal":"O - 210/25","month":"Oct-25","agent":"EVGENIIA TASHKINOVA","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":37376.74},
+{"deal":"O - 210/25A","month":"Oct-25","agent":"EVGENIIA TASHKINOVA","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":37376.74},
+{"deal":"O - 211/25","month":"Oct-25","agent":"WALID EL FRINI","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":15000},
+{"deal":"O - 212/25","month":"Oct-25","agent":"OBAID NAZIR PEER","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":174500},
+{"deal":"O - 213/25","month":"Oct-25","agent":"STEPHANIE SHUANG","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":1229880},
+{"deal":"O - 214/25","month":"Oct-25","agent":"IDRISS FADDOULI","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":43012.2},
+{"deal":"O - 215/25","month":"Oct-25","agent":"ANKESH MISHRA","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":21000},
+{"deal":"O - 216/25","month":"Oct-25","agent":"MUKESH RAWAT","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":57000},
+{"deal":"O - 217/25","month":"Oct-25","agent":"RAJA ASAD","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":6750},
+{"deal":"O - 218/25","month":"Oct-25","agent":"LAURA KAUPA","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":13000},
+{"deal":"O - 219/25","month":"Oct-25","agent":"RAJDEEP SINGH","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":42758},
+{"deal":"O - 220/25","month":"Nov-25","agent":"RAJA ASAD","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":3238},
+{"deal":"O - 221/25","month":"Nov-25","agent":"ANKESH MISHRA","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":75000},
+{"deal":"O - 222/25","month":"Nov-25","agent":"LAURA KAUPA","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":77924.45},
+{"deal":"S - 223/25","month":"Nov-25","agent":"MAHMOUD TAHA","manager":"NADIM","director":"MOHAMED ELSAYED","commission":13785.71},
+{"deal":"S - 224/25","month":"Nov-25","agent":"RUBY ROSE RAPIS","manager":"NADIM","director":"MOHAMED ELSAYED","commission":14000},
+{"deal":"O - 225/25","month":"Nov-25","agent":"SHAAM ALZOABI","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":63400},
+{"deal":"O - 226/25","month":"Nov-25","agent":"SYED DANISH HAIDER","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":59000},
+{"deal":"O - 227/25","month":"Nov-25","agent":"SAURABH CHUGH","manager":"India","director":"India","commission":106773.06},
+{"deal":"O - 228/25","month":"Nov-25","agent":"ARASH HADDAD MOMENI","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":66000},
+{"deal":"O - 229/25","month":"Nov-25","agent":"MUKESH RAWAT","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":6250},
+{"deal":"O - 230/25","month":"Nov-25","agent":"WALID EL FRINI","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":18750},
+{"deal":"O - 231/25","month":"Nov-25","agent":"LAURA KAUPA","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":442000},
+{"deal":"O - 232/25","month":"Nov-25","agent":"LAVEENA FULWANI","manager":"AKANSHA","director":"MOHAMED ELSAYED","commission":10500},
+{"deal":"O - 235/25","month":"Nov-25","agent":"IDRISS FADDOULI","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":52500},
+{"deal":"O - 236/25","month":"Nov-25","agent":"OBAID NAZIR PEER","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":146350},
+{"deal":"O - 237/25","month":"Nov-25","agent":"HIBILDAS HARIDAS","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":141200},
+{"deal":"O - 238/25","month":"Dec-25","agent":"JYOTI RAMESH DEVATWAL","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":98840},
+{"deal":"O - 239/25","month":"Dec-25","agent":"NOURHAN AMER MELIGYMOHAMED","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":141250},
+{"deal":"O - 240/25","month":"Dec-25","agent":"STEPHANIE SHUANG","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":704880},
+{"deal":"O - 241/25","month":"Dec-25","agent":"ANKESH MISHRA","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":61820},
+{"deal":"O - 242/25","month":"Dec-25","agent":"MUKESH RAWAT","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":46000},
+{"deal":"O - 243/25","month":"Dec-25","agent":"OBAID NAZIR PEER","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":689235.52},
+{"deal":"O - 244/25","month":"Dec-25","agent":"OBAID NAZIR PEER","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":824315.52},
+{"deal":"O - 245/25","month":"Dec-25","agent":"JYOTI RAMESH DEVATWAL","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":65100},
+{"deal":"O - 246/25","month":"Dec-25","agent":"ARASH HADDAD MOMENI","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":28000},
+{"deal":"O - 247/25","month":"Dec-25","agent":"WALID EL FRINI","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":18000},
+{"deal":"O - 248/25","month":"Dec-25","agent":"WALID EL FRINI","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":16250},
+{"deal":"O - 249/25","month":"Dec-25","agent":"LAVEENA FULWANI","manager":"AKANSHA","director":"MOHAMED ELSAYED","commission":20220},
+{"deal":"O - 250/25","month":"Dec-25","agent":"MUHAMMAD MUJTABA","manager":"JIMMY","director":"MOHAMED ELSAYED","commission":74899.5},
+{"deal":"O - 251/25","month":"Dec-25","agent":"ANKESH MISHRA","manager":"MOHAMED ELSAYED","director":"MOHAMED ELSAYED","commission":71000},
+{"deal":"O - 253/25","month":"Dec-25","agent":"WALID EL FRINI","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":25000},
+{"deal":"O-254/25","month":"Dec-25","agent":"WALID EL FRINI","manager":"WAQAS ABBASI","director":"MOHAMED ELSAYED","commission":8500}
+];
+
+const monthOrder = ['Jan-25','Feb-25','Mar-25','Apr-25','May-25','Jun-25','Jul-25','Aug-25','Sep-25','Oct-25','Nov-25','Dec-25'];
+const COLORS = ['#2563eb','#059669','#7c3aed','#dc2626','#d97706','#0891b2','#be185d','#4f46e5','#65a30d','#ea580c'];
+
+let data = [...defaultData];
+let selectedMonth = 'All';
+let selectedDirector = 'All';
+let selectedManager = 'All';
+let selectedAgent = 'All';
+
+let trendChart, directorChart, managerChart, agentChart;
+
+// Utility functions
+const formatAED = (v) => v >= 1000000 ? `${(v/1000000).toFixed(2)}M` : v >= 1000 ? `${(v/1000).toFixed(0)}K` : v.toFixed(0);
+const formatFull = (v) => new Intl.NumberFormat('en-AE',{style:'currency',currency:'AED',maximumFractionDigits:0}).format(v);
+const unique = (arr) => [...new Set(arr)].sort();
+
+// Get filtered data
+function getFilteredData() {
+  let result = data;
+  if (selectedMonth !== 'All') result = result.filter(d => d.month === selectedMonth);
+  if (selectedDirector !== 'All') result = result.filter(d => d.director === selectedDirector);
+  if (selectedManager !== 'All') result = result.filter(d => d.manager === selectedManager);
+  if (selectedAgent !== 'All') result = result.filter(d => d.agent === selectedAgent);
+  return result;
+}
+
+// Render month buttons
+function renderMonthButtons() {
+  const container = document.getElementById('monthButtons');
+  const months = monthOrder.filter(m => data.some(d => d.month === m));
+  container.innerHTML = `<button class="month-btn ${selectedMonth === 'All' ? 'active' : ''}" data-month="All">All</button>` +
+    months.map(m => `<button class="month-btn ${selectedMonth === m ? 'active' : ''}" data-month="${m}">${m.replace('-25','')}</button>`).join('');
+  
+  container.querySelectorAll('.month-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectedMonth = btn.dataset.month;
+      renderAll();
+    });
+  });
+}
+
+// Render filter dropdowns
+function renderFilters() {
+  const filtered = getFilteredData();
+  
+  // Directors
+  const directorSelect = document.getElementById('directorFilter');
+  const directors = ['All', ...unique(data.map(d => d.director))];
+  directorSelect.innerHTML = directors.map(d => `<option value="${d}" ${selectedDirector === d ? 'selected' : ''}>${d}</option>`).join('');
+  
+  // Managers (filtered by director)
+  let managerData = data;
+  if (selectedDirector !== 'All') managerData = managerData.filter(d => d.director === selectedDirector);
+  const managerSelect = document.getElementById('managerFilter');
+  const managers = ['All', ...unique(managerData.map(d => d.manager))];
+  managerSelect.innerHTML = managers.map(m => `<option value="${m}" ${selectedManager === m ? 'selected' : ''}>${m}</option>`).join('');
+  
+  // Agents (filtered by director and manager)
+  let agentData = data;
+  if (selectedDirector !== 'All') agentData = agentData.filter(d => d.director === selectedDirector);
+  if (selectedManager !== 'All') agentData = agentData.filter(d => d.manager === selectedManager);
+  const agentSelect = document.getElementById('agentFilter');
+  const agents = ['All', ...unique(agentData.map(d => d.agent))];
+  agentSelect.innerHTML = agents.map(a => `<option value="${a}" ${selectedAgent === a ? 'selected' : ''}>${a}</option>`).join('');
+}
+
+// Render KPIs
+function renderKPIs() {
+  const filtered = getFilteredData();
+  const totalComm = filtered.reduce((s,d) => s + d.commission, 0);
+  const deals = filtered.length;
+  const avgDeal = deals ? totalComm / deals : 0;
+  const uniqueAgents = unique(filtered.map(d => d.agent)).length;
+  const commPerAgent = uniqueAgents ? totalComm / uniqueAgents : 0;
+  
+  document.getElementById('kpiGrid').innerHTML = [
+    {label:'Total Commission',value:formatFull(totalComm),color:'#2563eb'},
+    {label:'Total Deals',value:deals.toLocaleString(),color:'#059669'},
+    {label:'Avg per Deal',value:formatAED(avgDeal),color:'#7c3aed'},
+    {label:'Active Agents',value:uniqueAgents,color:'#dc2626'},
+    {label:'Comm/Agent',value:formatAED(commPerAgent),color:'#d97706'}
+  ].map(k => `<div class="kpi-card"><div class="kpi-label">${k.label}</div><div class="kpi-value" style="color:${k.color}">${k.value}</div></div>`).join('');
+  
+  document.getElementById('recordCount').textContent = `2025 YTD • ${data.length} Total Records`;
+}
+
+// Render charts
+function renderCharts() {
+  const filtered = getFilteredData();
+  const months = monthOrder.filter(m => data.some(d => d.month === m));
+  
+  // Monthly trend
+  const monthlyData = months.map(m => {
+    const mData = filtered.filter(d => d.month === m);
+    return mData.reduce((s,d) => s + d.commission, 0);
+  });
+  
+  if (trendChart) trendChart.destroy();
+  trendChart = new Chart(document.getElementById('trendChart'), {
+    type: 'line',
+    data: {
+      labels: months.map(m => m.replace('-25','')),
+      datasets: [{
+        label: 'Commission',
+        data: monthlyData,
+        borderColor: '#2563eb',
+        backgroundColor: 'rgba(37,99,235,0.1)',
+        fill: true,
+        tension: 0.3
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { ticks: { callback: v => formatAED(v) } }
+      }
+    }
+  });
+  
+  // Director pie
+  const directorGrouped = {};
+  filtered.forEach(d => {
+    if (!directorGrouped[d.director]) directorGrouped[d.director] = 0;
+    directorGrouped[d.director] += d.commission;
+  });
+  const directorLabels = Object.keys(directorGrouped).sort((a,b) => directorGrouped[b] - directorGrouped[a]);
+  const directorValues = directorLabels.map(l => directorGrouped[l]);
+  
+  if (directorChart) directorChart.destroy();
+  directorChart = new Chart(document.getElementById('directorChart'), {
+    type: 'doughnut',
+    data: {
+      labels: directorLabels,
+      datasets: [{
+        data: directorValues,
+        backgroundColor: COLORS.slice(0, directorLabels.length)
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } }
+    }
+  });
+  
+  // Manager bar
+  const managerGrouped = {};
+  filtered.forEach(d => {
+    if (!managerGrouped[d.manager]) managerGrouped[d.manager] = 0;
+    managerGrouped[d.manager] += d.commission;
+  });
+  const managerEntries = Object.entries(managerGrouped).sort((a,b) => b[1] - a[1]).slice(0, 10);
+  
+  if (managerChart) managerChart.destroy();
+  managerChart = new Chart(document.getElementById('managerChart'), {
+    type: 'bar',
+    data: {
+      labels: managerEntries.map(e => e[0]),
+      datasets: [{
+        label: 'Commission',
+        data: managerEntries.map(e => e[1]),
+        backgroundColor: '#059669'
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { callback: v => formatAED(v) } }
+      }
+    }
+  });
+  
+  // Agent bar
+  const agentGrouped = {};
+  filtered.forEach(d => {
+    if (!agentGrouped[d.agent]) agentGrouped[d.agent] = { commission: 0, deals: 0 };
+    agentGrouped[d.agent].commission += d.commission;
+    agentGrouped[d.agent].deals += 1;
+  });
+  const agentEntries = Object.entries(agentGrouped).sort((a,b) => b[1].commission - a[1].commission).slice(0, 10);
+  
+  if (agentChart) agentChart.destroy();
+  agentChart = new Chart(document.getElementById('agentChart'), {
+    type: 'bar',
+    data: {
+      labels: agentEntries.map(e => e[0]),
+      datasets: [{
+        label: 'Commission',
+        data: agentEntries.map(e => e[1].commission),
+        backgroundColor: '#7c3aed'
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { callback: v => formatAED(v) } }
+      }
+    }
+  });
+  
+  // Table
+  const totalComm = filtered.reduce((s,d) => s + d.commission, 0);
+  document.querySelector('#agentTable tbody').innerHTML = agentEntries.map((e, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td>${e[0]}</td>
+      <td class="right blue">${formatFull(e[1].commission)}</td>
+      <td class="right">${e[1].deals}</td>
+      <td class="right">${formatAED(e[1].commission / e[1].deals)}</td>
+      <td class="right"><span class="badge">${((e[1].commission / totalComm) * 100).toFixed(1)}%</span></td>
+    </tr>
+  `).join('');
+}
+
+// Render all
+function renderAll() {
+  renderMonthButtons();
+  renderFilters();
+  renderKPIs();
+  renderCharts();
+}
+
+// Event listeners
+document.getElementById('directorFilter').addEventListener('change', (e) => {
+  selectedDirector = e.target.value;
+  selectedManager = 'All';
+  selectedAgent = 'All';
+  renderAll();
+});
+
+document.getElementById('managerFilter').addEventListener('change', (e) => {
+  selectedManager = e.target.value;
+  selectedAgent = 'All';
+  renderAll();
+});
+
+document.getElementById('agentFilter').addEventListener('change', (e) => {
+  selectedAgent = e.target.value;
+  renderAll();
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  selectedMonth = 'All';
+  selectedDirector = 'All';
+  selectedManager = 'All';
+  selectedAgent = 'All';
+  renderAll();
+});
+
+// CSV Upload
+document.getElementById('csvUpload').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  const status = document.getElementById('uploadStatus');
+  status.textContent = 'Processing...';
+  status.className = '';
+  
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete: (results) => {
+      try {
+        const parsed = results.data.map(row => ({
+          deal: String(row['DEAL NO.'] || row['deal'] || '').trim(),
+          month: String(row['MONTH'] || row['month'] || '').trim(),
+          agent: String(row['AGENT(S)'] || row['agent'] || '').trim(),
+          manager: String(row['Sales Manager'] || row['manager'] || '').replace(/\u00a0/g, ' ').trim(),
+          director: String(row['Sales Director'] || row['director'] || '').trim(),
+          commission: parseFloat(row['NET COMMISSION'] || row['commission'] || 0) || 0
+        })).filter(r => r.deal && r.commission > 0);
+        
+        if (parsed.length > 0) {
+          data = parsed;
+          selectedMonth = 'All';
+          selectedDirector = 'All';
+          selectedManager = 'All';
+          selectedAgent = 'All';
+          status.textContent = `✓ Loaded ${parsed.length} records`;
+          status.className = 'status-success';
+          renderAll();
+        } else {
+          status.textContent = '✗ No valid data found';
+          status.className = 'status-error';
+        }
+      } catch (err) {
+        status.textContent = '✗ Error parsing file';
+        status.className = 'status-error';
+      }
+    },
+    error: () => {
+      status.textContent = '✗ Failed to read file';
+      status.className = 'status-error';
+    }
+  });
+});
+
+// Initial render
+renderAll();
+</script>
+</body>
+</html>
